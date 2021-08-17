@@ -1,0 +1,108 @@
+%% Add data/scripts directories to path 
+
+if strcmp(computer, 'GLNXA64')
+    % Add path to data on node.
+    addpath('jonathan/Desktop/Communication subspace/v1-v2_gratings/v1-v2_gratings/mat_neural_data')
+    % Add path to scripts on node.
+    cd('jonathan/Desktop/Communication subspace/communication-subspace-master')
+    addpath(genpath(pwd))
+    % Set nCores.
+    parpool('local', 12);
+else
+    % Add path to data on local computer.
+    addpath('D:\Communication subspace\v1-v2_gratings\v1-v2_gratings\mat_neural_data')
+    % Add path to scripts on local computer.
+    cd('D:\Communication subspace\communication-subspace-master')
+    addpath(genpath(pwd))
+    parpool('local', 2);
+end
+
+
+%% Set constants
+
+SET_CONSTS
+
+
+%% Load and pre-process neural data for all sessions
+
+% Preallocate and intialize waitbar.
+populations = cell(N_DATASETS, N_REGIONS_TOTAL, N_SESSIONS);
+w = waitbar(0, '');
+
+for iSession = SESSIONS_TO_RUN
+    
+    % Update waitbar.
+    waitbar(iSession / N_SESSIONS, w, ...
+            sprintf('Loading and adding data from %s', SESSION_NAMES{iSession}))
+        
+    % Load new session data.
+    load(SESSION_NAMES{iSession})
+
+    % The 'TrialPeriod' option can be set to 'Driven' (trials for which an
+    % oriented grating was presented), 'Spontaneous' (trials for which no
+    % grating was presented), 'Full' (combine each driven trial with the
+    % subsequent spontaneous trial), or an interval in ms (interval must be in
+    % the range 1 - 2780 (the first 1280 ms correspond to driven activity, the
+    % subsequent 1500s correspond to spontaneous activity). spikes is a 1x2
+    % cell array whose first cell contains the nUnits x nTimepoints x nTrials
+    % array of firing rates from V1, and whose second cell contains the same as
+    % the first cell but for V2.
+    [spikes, stim] ...
+        = ExtractSpikes(neuralData, BIN_WIDTH, 'TrialPeriod', TRIAL_PERIOD);
+
+    
+    % Creates N_TYPES x 1 cell array, where each cell contains a
+    % nTimepoints*nStimTrials x nUnits x nRepetitions matrix of residuals,
+    % with nStimTrials = the number of trials featuring one unique stimulus.
+    % Note again that spikes{1} is V1 and spikes{2} is V2.
+    populations(:,:,iSession) ...
+        = ConstructSourceAndTarget(PartitionByType(spikes{1}, stim), ...
+                                   PartitionByType(spikes{2}, stim), ...
+                                   'nBins', N_HIST_BINS, 'nReps', N_REPS, ...
+                                   'residuals', true);
+                                   
+end
+
+clear spikes stim iSession
+close(w)
+
+%% Set target region and source and target indices within populations
+
+targetArea = 'V1';
+sourceIdx = 1; % source V1
+switch targetArea
+    case 'V1'
+        targetIdx = 2;
+    case 'V2'
+        targetIdx = 3;
+end
+
+
+%% Cross-validated Reduced Rank Regression
+
+% Preallocate across sessions and datasets (repetitions will be averaged
+% away within function).
+optDimsRrr = NaN(N_DATASETS, N_SESSIONS);
+predPerfRrr = NaN(N_DATASETS, length(N_DIMS_FOR_PRED), N_SESSIONS);
+predErrorsRrr = NaN(N_DATASETS, length(N_DIMS_FOR_PRED), N_SESSIONS);
+
+for iSession = SESSIONS_TO_RUN
+    
+    % Print current session name to command console as waitbar will run
+    % across datasets within TestNumPredDimsRrr.
+    fprintf('Working on %s...\n', SESSION_NAMES{iSession})
+    
+    % Test across datasets for current datset.
+    [optDimsRrr(:,iSession), predPerfRrr(:,:,iSession), predErrorsRrr(:,:,iSession)] ...
+        = TestNumPredDimsRrr(populations(:,:,iSession), sourceIdx, targetIdx, ...
+                             'nDimsUsedForPrediction', N_DIMS_FOR_PRED, ...
+                             'ridgeInit', RIDGE_INIT, 'scale', SCALE, ...
+                             'waitbar', true);
+
+end
+
+
+%% Full ridge regression model performance
+
+
+

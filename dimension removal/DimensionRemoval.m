@@ -15,15 +15,13 @@ function X_hat = DimensionRemoval(sourcePops,B_AllReps)
 % that the covariance matrix as a linear transformation stretches a unit
 % hypersphere into the shape of (the row vectors of) X, i.e. it stretches
 % the data in the direction of its eigenvectors (the principal axes) by a
-% scale factor equivalent to the associated eigenvalues--this idea of
-% pulling the regression dimensions in the direction of the principal axes
-% sounds a bit reminiscent of Partial Least Squares). For, M = B_ * Cov(X),
-% we then perform the SVD of X. We next note that we generally test a
-% number of predictive dimensions that is much smaller than the total
+% scale factor equivalent to the associated eigenvalues). For, M = B_ *
+% Cov(X), we then perform the SVD of X. We next note that we generally test
+% a number of predictive dimensions that is much smaller than the total
 % number of units. As such, B_' is an underdetermined matrix, as is M (for
 % B_ = p x m, and Cov = p x p, we have M = m x p, with m << p). Thus, the
-% trailing p - m right singular vectors have an associated singular value
-% of 0. These right singular vectors are eigenvectors of Cov(X) with
+% trailing p - m right singular vectors have no associated nonzero singular
+% values. These right singular vectors are eigenvectors of Cov(X) with
 % associated eigenvalue 0 and under a PCA model interpretation correspond
 % to principal axes along which there is 0 variance (since the
 % dimensionality of the row space is smaller than that of its ambient
@@ -32,7 +30,7 @@ function X_hat = DimensionRemoval(sourcePops,B_AllReps)
 % the subspace spanned by the last p - m right singular vectors (due to the
 % orthogonality of all right singular vectors). By choosing these trailing
 % singular vectors as a basis, we then have an orthonormal basis for a
-% subsapce orthogonal to the row space of M.
+% subspace orthogonal to the row space of M.
 %
 % PARAMETERS
 % ----------
@@ -81,18 +79,14 @@ M = pagemtimes(permute(B_AllReps,[2 1 3]), C);
 nPredDims = size(M, 1);
 Q = NaN(nUnits, (nUnits-nPredDims), nReps); 
 for iRep = 1:nReps
-   [~,S,V] = svd(M(:,:,iRep));
+   [~,~,V] = svd(M(:,:,iRep));
    Q(:,:,iRep) = V(:, nPredDims+1 : end);
-   sigmas = diag(S);
-   assert(all(ismembertol(sigmas(nPredDims+1:end),0,1e-12)), ...
-          'Double-check inputs.')
 end
 
-% Change of basis, adopting trailing right singular vectors (with
-% associated singular value = 0) as basis for our data observations
-% (across repetition). For observations as columns of V1, we would have
-% Q' * V1, so to place observations in rows we take (Q' * V1)' = V1' *
-% Q, where V1' has observations in rows.
+% Adopt trailing right singular vectors as basis for our data observations
+% (across repetition). For observations as columns of V1, we would have Q'
+% * V1, so to place observations in rows we take (Q' * V1)' = V1' * Q,
+% where V1' has observations in rows.
 X_hat = pagemtimes(sourcePops, Q);
 
 end
